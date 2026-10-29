@@ -2,7 +2,7 @@
 
 材料DX Boot camp 2026（2026年11月11日 Day 2, 10:00–10:45）のハンズオン「ゼロからのロボットアーム入門」（大阪大学 中島優作）の発表資料です。
 
-- スライド: https://yusakunakajima.github.io/materials-dx-bootcamp-robot-arm/
+- スライド: https://nakajima.phd/materials-dx-bootcamp-robot-arm/
 - ベース: [zero_ros](https://github.com/YusakuNakajima/zero_ros) の `slides/robot-arm-basic-control`
 
 ## 内容
