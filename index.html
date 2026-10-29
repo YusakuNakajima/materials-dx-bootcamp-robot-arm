@@ -1,0 +1,956 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+    <title>ゼロからのロボットアーム入門 - 材料DX Boot camp 2026</title>
+
+    <link rel="stylesheet" href="assets/vendor/reveal.js/dist/reset.css">
+    <link rel="stylesheet" href="assets/vendor/reveal.js/dist/reveal.css">
+    <link rel="stylesheet" href="assets/vendor/reveal.js/dist/theme/black.css">
+    <link rel="stylesheet"
+        href="assets/vendor/highlight.js/styles/atom-one-dark.min.css">
+
+
+    <link rel="stylesheet" href="assets/vendor/reveal.js-plugins/chalkboard/style.css">
+
+    <style>
+        .copy-button {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            padding: 5px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            background-color: #f0f0f0;
+            cursor: pointer;
+            font-size: 12px;
+            opacity: 0.7;
+        }
+
+        .copy-button:hover {
+            opacity: 1;
+        }
+    </style>
+
+    <!-- 共通スタイル読み込み -->
+    <link rel="stylesheet" href="assets/common-styles.css">
+</head>
+
+<body>
+    <div class="reveal">
+        <div class="slides">
+            <section data-background-image="media/teaching_image.jpg" data-background-opacity="0.3">
+                <h1>ゼロからのロボットアーム入門</h1>
+                <p>~ ロボットの基本動作と制御 ~</p>
+                <p>大阪大学 中島優作</p>
+                <p style="font-size: 0.6em;">材料DX Boot camp 2026 Day 2 ハンズオン<br>2026年11月11日 名古屋駅前イノベーションハブ</p>
+            </section>
+            <section>
+                <h2>このハンズオンの範囲</h2>
+                <ul>
+                    <ul>
+                        <li>ロボットアームの動作生成でよく使われる仕組みを学んでいきます。</li>
+                        <li>コードなどはUniversalRobotの例を扱います(他のメーカーでも概ね同じ機能があるはずです)。</li>
+                        <li>ブラウザで動くアプリで実際に動きを確かめます(インストール不要)。</li>
+                    </ul>
+                    <p style="font-size: 0.7em;">スライドURL: <a href="https://yusakunakajima.github.io/materials-dx-bootcamp-robot-arm/" style="color: #3b82f6;">yusakunakajima.github.io/materials-dx-bootcamp-robot-arm</a></p>
+
+                </ul>
+            </section>
+            <section>
+                <h2>オススメ参考資料</h2>
+                <p>このスライドと教科書の併用をおススメします</p>
+                <ol style="font-size: 0.8em;">
+                    <div style="display: flex; align-items: center; margin-bottom: 20px;">
+                        <img src="media/産業用ロボットtheビギニング.jpg" style="width: 15%; margin-right: 20px;">
+                        <p>産業用ロボットtheビギニング - 産業用ロボットの基礎的な情報を網羅</p>
+                    </div>
+
+
+                    <div style="display: flex; align-items: center;">
+                        <img src="media/イラストで学ぶロボット工学.jpg" style="width: 15%; margin-right: 20px;">
+                        <p>イラストで学ぶロボット工学 - 学部生向けの教科書, 本格的な制御の本だが読みやすい</p>
+                    </div>
+
+                </ol>
+            </section>
+
+            <section>
+                <section>
+                    <h2>ロボット動作の方法</h2>
+                    <div style="display: flex;">
+                        <div style="flex: 1;">
+                            <img src="media/TP.png" style="width: 60%; margin-bottom: 20px;">
+                            <p>ティーチングペンダント</p>
+                            <ul>
+                                <li>ロボット用の端末</li>
+                                <li>最近はLANを介してソフトウェアで行うものも多い</li>
+                            </ul>
+                        </div>
+                        <div style="flex: 1;">
+                            <img src="media/programing_image.jpg" style="width: 80%; margin-bottom: 20px;">
+                            <p>プログラミング</p>
+                            <ul>
+                                <li>Python等で動作コードを作成</li>
+                                <li>TPでは対応していない機能が使える</li>
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+
+            </section>
+            <section>
+                <h2>動作作成の手順</h2>
+                <div style="display: flex;">
+                    <div style="flex: 1;">
+                        <ol>
+                            <li><strong>TCPの設定</strong><br>
+                            <li><strong>座標系の指定</strong><br>
+                            <li><strong>モーション種類の決定</strong><br>
+                            <li><strong>実行・テスト</strong><br>
+                        </ol>
+                    </div>
+                </div>
+            </section>
+            <section>
+                <h2>アプリを開いてください</h2>
+                <p style="text-align: center; margin-bottom: 10px;">
+                    <strong>→ <a href="interactive_app/motion_viewer.html" target="_blank"
+                            style="color: #3b82f6; text-decoration: underline;">全画面表示</a></strong>
+                </p>
+                <iframe data-src="interactive_app/motion_viewer.html" width="100%" height="200px"
+                    frameborder="0"></iframe>
+                <p>この後の説明はアプリを見ながら行います</p>
+            </section>
+            <section>
+                <section>
+                    <h2>ステップ①TCPと重心</h2>
+                    <div style="display: flex; align-items: center;">
+                        <div style="flex: 1;">
+                            <img src="media/tcp_cog_schematic.svg" alt="ロボットの模式図: フランジに付けたエンドエフェクタのTCP(先端)と重心" style="width: 100%;">
+                        </div>
+                        <div style="flex: 1; font-size: 0.65em;">
+                            <ul>
+                                <li><strong>エンドエフェクタ</strong>: 手先のツール</li>
+                                <li><strong style="color: #ff6b6b;">TCP</strong>: 実際に動かしたい点と向き<br>例) 乳棒の先端</li>
+                                <li><strong style="color: #ffd54f;">重心</strong>: ツールの質量がかかる点</li>
+                                <li>どちらも<strong>フランジからの位置</strong>で登録</li>
+                                <li>重心は質量とセットで設定する</li>
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+                <section>
+                    <h2>複数のTCP</h2>
+                    <div style="display: flex;">
+                        <div style="flex: 1;">
+                            <div style="position: relative; display: inline-block; width: 60%;">
+                                <img src="media/robotic_powder_grinding.png" style="width: 100%; display: block; margin: 0;">
+                                <svg viewBox="0 0 314 422" style="position: absolute; inset: 0; width: 100%; height: 100%;" aria-label="乳棒とヘラの先端">
+                                    <circle cx="30" cy="245" r="17" fill="none" stroke="#ef4444" stroke-width="4"></circle>
+                                    <circle cx="160" cy="190" r="17" fill="none" stroke="#ef4444" stroke-width="4"></circle>
+                                </svg>
+                            </div>
+                            <p style="font-size: 0.4em; color: #aaa; margin-top: 6px;">出典: Y. Nakajima et al., <a href="https://doi.org/10.1109/IROS47612.2022.9981081" target="_blank">"Robotic Powder Grinding with a Soft Jig for Laboratory Automation in Material Science,"</a> IROS 2022, Kyoto, Japan, pp. 2320-2326, doi: 10.1109/IROS47612.2022.9981081</p>
+                        </div>
+                        <div style="flex: 1;">
+                            <ul>
+                                <li>それぞれのツールに対してTCPを登録しておくと便利</li>
+                                <p>例)TCPを乳棒とヘラの先端に設定</p>
+                                <p>場面によってTCPを切り替えることで最小限のプログラムの変更で複数のツールが使える</p>
+
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+                <section>
+                    <h2>エンドエフェクタの重心設定</h2>
+                    <div style="display: flex; align-items: center;">
+                        <div style="flex: 1;">
+                            <svg viewBox="0 0 360 400" width="100%" aria-label="フランジ・重心・TCPの関係">
+                                <defs>
+                                    <marker id="cog-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                                        <path d="M0,0 L10,5 L0,10 z" fill="#fbbf24"></path>
+                                    </marker>
+                                    <marker id="cog-vec" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                                        <path d="M0,0 L10,5 L0,10 z" fill="#4fc3f7"></path>
+                                    </marker>
+                                </defs>
+                                <!-- ロボットの手首 -->
+                                <rect x="120" y="10" width="80" height="60" rx="14" fill="#9ca3af"></rect>
+                                <rect x="105" y="70" width="110" height="12" rx="3" fill="#6b7280"></rect>
+                                <text x="225" y="81" fill="#e5e7eb" font-size="15">フランジ</text>
+                                <!-- グリッパ本体 -->
+                                <rect x="100" y="82" width="120" height="110" rx="8" fill="#4b5563"></rect>
+                                <!-- 指 -->
+                                <rect x="112" y="192" width="22" height="120" rx="4" fill="#6b7280"></rect>
+                                <rect x="186" y="192" width="22" height="120" rx="4" fill="#6b7280"></rect>
+                                <!-- フランジ中心から重心へのベクトル -->
+                                <circle cx="160" cy="76" r="4" fill="#4fc3f7"></circle>
+                                <line x1="160" y1="76" x2="181" y2="141" stroke="#4fc3f7" stroke-width="3" stroke-dasharray="6 4" marker-end="url(#cog-vec)"></line>
+                                <text x="20" y="120" fill="#4fc3f7" font-size="15">重心位置</text>
+                                <text x="20" y="140" fill="#4fc3f7" font-size="15">(x, y, z)</text>
+                                <!-- 重心記号 -->
+                                <g transform="translate(185,150)">
+                                    <circle r="14" fill="#f9fafb"></circle>
+                                    <path d="M0,0 L14,0 A14,14 0 0 1 0,14 z" fill="#111827"></path>
+                                    <path d="M0,0 L-14,0 A14,14 0 0 1 0,-14 z" fill="#111827"></path>
+                                    <circle r="14" fill="none" stroke="#111827" stroke-width="2"></circle>
+                                </g>
+                                <text x="236" y="148" fill="#fbbf24" font-size="15">重心</text>
+                                <text x="236" y="168" fill="#fbbf24" font-size="15">質量 m</text>
+                                <!-- 重力 -->
+                                <line x1="185" y1="168" x2="185" y2="250" stroke="#fbbf24" stroke-width="4" marker-end="url(#cog-arrow)"></line>
+                                <text x="198" y="245" fill="#fbbf24" font-size="16">mg</text>
+                                <!-- TCP -->
+                                <g transform="translate(160,330)">
+                                    <line x1="0" y1="0" x2="0" y2="40" stroke="#3b82f6" stroke-width="3"></line>
+                                    <line x1="0" y1="0" x2="34" y2="0" stroke="#ef4444" stroke-width="3"></line>
+                                    <circle r="6" fill="#f472b6"></circle>
+                                </g>
+                                <text x="205" y="345" fill="#f472b6" font-size="15">TCP（作業点）</text>
+                                <text x="20" y="390" fill="#9ca3af" font-size="14">TCP と重心は別の点。両方をそれぞれ設定する</text>
+                            </svg>
+                        </div>
+                        <div style="flex: 1;">
+                            <p>設定するのは<strong>質量</strong>と<strong>重心位置</strong>（フランジ基準）</p>
+                            <p style="font-size: 0.8em;">重心設定が役に立つ場面</p>
+                            <ul style="font-size: 0.8em;">
+                                <li>フリードライブでの重力補償</li>
+                                <li>手先のフォーストルクセンサ値の重力補償</li>
+                                <li>加減速の調整</li>
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+
+            </section>
+
+            <section>
+                <section>
+                    <h2>ステップ②ロボットの座標系</h2>
+                    <div style="display: flex; font-size: 0.85em;">
+                        <div style="flex: 1;">
+                            <img src="media/robot_pose_position.png">
+                            <h4>関節座標系</h4>
+                            <p>関節それぞれの角度を指定</p>
+                        </div>
+                        <div style="flex: 1;">
+                            <img src="media/robot_pose_orientation.png">
+                            <h4>ベース座標系</h4>
+                            <p>ロボットの根本を基準にTCPの座標を指定</p>
+                        </div>
+                        <div style="flex: 1;">
+                            <img src="media/robot_pose_example.png">
+                            <h4>ツール座標系</h4>
+                            <p>現在のTCPの座標系を基準に次のTCPの座標系を指定</p>
+                        </div>
+                    </div>
+                    <p>座標系による動きの違いを確認↓</p>
+                </section>
+
+                <section>
+                    <h2>ジョグ動作</h2>
+                    <svg viewBox="0 0 790 306" width="100%" aria-label="関節・ベース座標系・ツール座標系でのジョグ動作の違い">
+                    <defs>
+                    <marker id="jog-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#fbbf24"/></marker>
+                    <marker id="jog-arrow-pink" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#f472b6"/></marker>
+                    <marker id="jog-arrow-red" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#ef4444"/></marker>
+                    <marker id="jog-arrow-blue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#3b82f6"/></marker>
+                    </defs>
+                    <g transform="translate(0,0)">
+                    <rect x="2" y="2" width="256" height="300" rx="12" fill="none" stroke="#374151" stroke-width="2"/>
+                    <text x="130" y="28" fill="#e5e7eb" font-size="17" font-weight="bold" text-anchor="middle">関節ジョグ</text>
+                    <g transform="translate(0,30)"><line x1="10" y1="215" x2="250" y2="215" stroke="#4b5563" stroke-width="2"/>
+                    <rect x="48" y="190" width="44" height="25" rx="4" fill="#6b7280"/><rect x="63" y="165" width="14" height="27" fill="#9ca3af"/><g opacity="0.35"><polyline points="70,165 102.5,75.7 163.8,127.2" fill="none" stroke="#9ca3af" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/><line x1="163.8" y1="127.2" x2="163.8" y2="155.2" stroke="#fb923c" stroke-width="6" stroke-linecap="round"/></g><polyline points="70,165 78.3,70.4 150.8,104.2" fill="none" stroke="#9ca3af" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+                    <circle cx="70" cy="165" r="8" fill="#60a5fa"/><circle cx="78.3" cy="70.4" r="7" fill="#60a5fa"/><circle cx="150.8" cy="104.2" r="6" fill="#60a5fa"/>
+                    <line x1="150.8" y1="104.2" x2="158.0" y2="131.2" stroke="#fb923c" stroke-width="6" stroke-linecap="round"/>
+                    <circle cx="158.0" cy="131.2" r="5" fill="#f472b6"/>
+                    <path d="M 92.9,132.2 A 40 40 0 0 0 66.5,125.2" fill="none" stroke="#fbbf24" stroke-width="3" marker-end="url(#jog-arrow)"/>
+                    <text x="20" y="110" fill="#fbbf24" font-size="15">J2</text>
+                    <path d="M 163.8,155.2 Q 165,140 158,131.2" fill="none" stroke="#f472b6" stroke-width="2" stroke-dasharray="4 3"/></g>
+                    <text x="130" y="280" fill="#d1d5db" font-size="13" text-anchor="middle">1つの関節だけが回る</text>
+                    </g>
+                    <g transform="translate(265,0)">
+                    <rect x="2" y="2" width="256" height="300" rx="12" fill="none" stroke="#374151" stroke-width="2"/>
+                    <text x="130" y="28" fill="#e5e7eb" font-size="17" font-weight="bold" text-anchor="middle">ベース座標系ジョグ</text>
+                    <g transform="translate(0,30)"><line x1="10" y1="215" x2="250" y2="215" stroke="#4b5563" stroke-width="2"/>
+                    <rect x="48" y="190" width="44" height="25" rx="4" fill="#6b7280"/><rect x="63" y="165" width="14" height="27" fill="#9ca3af"/><g opacity="0.35"><polyline points="70,165 102.5,75.7 163.8,127.2" fill="none" stroke="#9ca3af" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/><line x1="163.8" y1="127.2" x2="163.8" y2="155.2" stroke="#fb923c" stroke-width="6" stroke-linecap="round"/></g><polyline points="70,165 135.1,95.9 208.8,127.2" fill="none" stroke="#9ca3af" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+                    <circle cx="70" cy="165" r="8" fill="#60a5fa"/><circle cx="135.1" cy="95.9" r="7" fill="#60a5fa"/><circle cx="208.8" cy="127.2" r="6" fill="#60a5fa"/>
+                    <line x1="208.8" y1="127.2" x2="208.8" y2="155.2" stroke="#fb923c" stroke-width="6" stroke-linecap="round"/>
+                    <circle cx="208.8" cy="155.2" r="5" fill="#f472b6"/>
+                    <line x1="168" y1="168" x2="203" y2="168" stroke="#f472b6" stroke-width="3" marker-end="url(#jog-arrow-pink)"/>
+                    <g transform="translate(110,205)"><line x1="0" y1="0" x2="34" y2="0" stroke="#ef4444" stroke-width="3" marker-end="url(#jog-arrow-red)"/><line x1="0" y1="0" x2="0" y2="-30" stroke="#3b82f6" stroke-width="3" marker-end="url(#jog-arrow-blue)"/><text x="38" y="5" fill="#ef4444" font-size="13">X</text><text x="-4" y="-34" fill="#3b82f6" font-size="13">Z</text></g></g>
+                    <text x="130" y="280" fill="#d1d5db" font-size="13" text-anchor="middle">手先がベースのXへ直進（向きは保持）</text>
+                    </g>
+                    <g transform="translate(530,0)">
+                    <rect x="2" y="2" width="256" height="300" rx="12" fill="none" stroke="#374151" stroke-width="2"/>
+                    <text x="130" y="28" fill="#e5e7eb" font-size="17" font-weight="bold" text-anchor="middle">ツール座標系ジョグ</text>
+                    <g transform="translate(0,30)"><line x1="10" y1="215" x2="250" y2="215" stroke="#4b5563" stroke-width="2"/>
+                    <rect x="48" y="190" width="44" height="25" rx="4" fill="#6b7280"/><rect x="63" y="165" width="14" height="27" fill="#9ca3af"/><g opacity="0.35"><polyline points="70,165 117.5,82.7 183.0,128.6" fill="none" stroke="#9ca3af" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/><line x1="183.0" y1="128.6" x2="202.8" y2="148.4" stroke="#fb923c" stroke-width="6" stroke-linecap="round"/></g><polyline points="70,165 143.9,105.3 207.8,153.4" fill="none" stroke="#9ca3af" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+                    <circle cx="70" cy="165" r="8" fill="#60a5fa"/><circle cx="143.9" cy="105.3" r="7" fill="#60a5fa"/><circle cx="207.8" cy="153.4" r="6" fill="#60a5fa"/>
+                    <line x1="207.8" y1="153.4" x2="227.6" y2="173.2" stroke="#fb923c" stroke-width="6" stroke-linecap="round"/>
+                    <circle cx="227.6" cy="173.2" r="5" fill="#f472b6"/>
+                    <line x1="222" y1="134" x2="242" y2="154" stroke="#f472b6" stroke-width="3" marker-end="url(#jog-arrow-pink)"/>
+                    <line x1="230" y1="176" x2="248" y2="194" stroke="#3b82f6" stroke-width="2.5" marker-end="url(#jog-arrow-blue)"/>
+                    <text x="236" y="210" fill="#3b82f6" font-size="13">Z</text></g>
+                    <text x="130" y="280" fill="#d1d5db" font-size="13" text-anchor="middle">手先が自分の向き（ツールZ）へ進む</text>
+                    </g>
+                    </svg>
+                    <ul style="font-size: 0.65em;">
+                        <li>関節や手先を少しずつ動かす動作を<strong>ジョグ動作</strong>という（薄い色：動かす前）</li>
+                        <li>アプリのジョグ機能（ボタン長押しで連続移動）で、3つの座標系での動きの違いを確認できる</li>
+                    </ul>
+                    <p>座標系の表現↓</p>
+                </section>
+
+                <section>
+                    <h2>TCPの姿勢表現</h2>
+                    <p>姿勢(pose) = 位置 + 向きで表すことが多い</p>
+                    <p>基本はXYZの座標系に対する位置と向きを考える</p>
+                    <div style="flex: 1;">
+                        <p style="text-align: center; margin-bottom: 10px;">
+                            <strong>→ <a href="interactive_app/pose_viewer.html" target="_blank"
+                                    style="color: #3b82f6; text-decoration: underline;">全画面表示</a></strong>
+                        </p>
+                        <iframe data-src="interactive_app/pose_viewer.html" width="100%" height="100%"
+                            frameborder="0"></iframe>
+                    </div>
+                </section>
+            </section>
+            <section>
+                <section>
+                    <h2>ステップ③動作指令は2分類</h2>
+                    <div style="display: flex; align-items: center; gap: 20px;">
+                        <div style="flex: 1;">
+                            <video width="100%" autoplay muted loop>
+                                <source src="media/motion_demo.mp4" type="video/mp4">
+                                動画を再生できません。
+                            </video>
+                        </div>
+                        <div style="flex: 1.2; font-size: 0.6em; text-align: left;">
+                            <div style="border: 2px solid #f472b6; border-radius: 10px; padding: 10px 15px; margin-bottom: 15px;">
+                                <strong style="color: #f472b6;">PTP</strong>（Point To Point）<br>
+                                経路を規定しない・<strong>関節空間</strong>で補間<br>
+                                → UR: <code>movej()</code>
+                            </div>
+                            <div style="border: 2px solid #4fc3f7; border-radius: 10px; padding: 10px 15px;">
+                                <strong style="color: #4fc3f7;">CP</strong>（Continuous Path）<br>
+                                TCPの経路形状を規定・<strong>直交空間</strong>で補間
+                                <div style="display: flex; gap: 10px; margin-top: 10px;">
+                                    <div style="flex: 1; border: 2px solid #fb923c; border-radius: 8px; padding: 6px 10px;">
+                                        <strong style="color: #fb923c;">LIN</strong> 直線<br>→ <code>movel()</code>
+                                    </div>
+                                    <div style="flex: 1; border: 2px solid #2dd4bf; border-radius: 8px; padding: 6px 10px;">
+                                        <strong style="color: #2dd4bf;">CIRC</strong> 円弧<br>→ <code>movec()</code>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <p>詳細は以下↓</p>
+
+                </section>
+                <section>
+                    <h2>PTPの詳細</h2>
+                    <div style="display: flex;">
+                        <div style="flex: 1;">
+                            <img src="media/PTP.png">
+                            <div style="position: absolute; 
+                                    top: 45%; 
+                                    left: 0%; 
+                                    width: 20%; 
+                                    height: 20%; 
+                                    border: 5px solid red; /* 赤い枠線 */
+                                    box-sizing: border-box; /* 枠線の幅を要素のサイズに含める */
+                                    "></div>
+                        </div>
+                        <div style="flex: 1;">
+                            <ul>
+                                <li><strong>関節空間での補間</strong>（UR: <code>movej</code>）</li>
+                                <li>各関節が最も速く目標に到達するように動く(グラフ)</li>
+                                <li>手先の軌道は予測できない</li>
+                                <li>障害物がない環境で使用する動作モード</li>
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+                <section>
+                    <h2>LINの詳細</h2>
+                    <div style="display: flex;">
+                        <div style="flex: 1;">
+                            <img src="media/LIN.png">
+                        </div>
+                        <div style="flex: 1;">
+                            <ul>
+                                <li><strong>CPの直線</strong>（UR: <code>movel</code>）</li>
+                                <li>手先が直線的に移動</li>
+                                <li>関節の可動範囲や特異点により動きに制限</li>
+                                <li>部品挿入や溶接で使用</li>
+                                <li>PTPよりも時間がかかる</li>
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+                <section>
+                    <h2>CIRCの詳細</h2>
+                    <div style="display: flex;">
+                        <div style="flex: 1;">
+                            <img src="media/CIRC.png">
+                        </div>
+                        <div style="flex: 1;">
+                            <ul>
+                                <li><strong>CPの円弧</strong>（UR: <code>movec</code>）</li>
+                                <li>中間点を指定して円弧を描く</li>
+                                <li>障害物回避や滑らかな動作で使用</li>
+                                <li>角を持つ物体の加工などに有効</li>
+                                <li>3点（始点・中間点・終点）が必要</li>
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+                <section>
+                    <h2>URScriptでの対応</h2>
+                    <table style="font-size: 0.55em; margin: 0 auto;">
+                        <thead>
+                            <tr><th>分類</th><th>関数</th><th>位置の与え方</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>PTP</td><td><code>movej(q, a, v, t, r)</code></td><td><strong>関節角</strong> <code>[j0..j5]</code></td></tr>
+                            <tr><td>LIN</td><td><code>movel(pose, a, v, t, r)</code></td><td><strong>TCP姿勢</strong> <code>p[x,y,z,rx,ry,rz]</code></td></tr>
+                            <tr><td>CIRC</td><td><code>movec(pose_via, pose_to, a, v, r)</code></td><td>経由点＋終点の<strong>TCP姿勢</strong></td></tr>
+                        </tbody>
+                    </table>
+                    <pre><code class="language-python" data-trim>
+movej([0, -1.57, 1.57, 0, 1.57, 0], a=1.4, v=1.05)
+movel(p[0.3, -0.2, 0.25, 0, 3.14, 0], a=1.2, v=0.25)
+movec(p[0.35, -0.1, 0.25, 0, 3.14, 0],  # 経由点
+      p[0.3, 0.0, 0.25, 0, 3.14, 0],    # 終点
+      a=1.2, v=0.25)
+                    </code></pre>
+                    <ul style="font-size: 0.7em;">
+                        <li>引数の型に「関節空間 / 直交空間」の違いがそのまま現れる</li>
+                    </ul>
+                    <p style="font-size: 0.45em; color: #aaa;">
+                        ※ <code>movej</code> に pose を渡すと内部で逆運動学を解き、関節空間で補間します
+                    </p>
+                </section>
+            </section>
+            <section>
+                <section>
+                    <h2>連続的なロボットモーション</h2>
+
+                    <ul>
+                        <li>複数の姿勢(waypoints)を指定して動かしたときに動きがガタつく</li>
+                    </ul>
+
+                    <p>ガタツキの少ないモーションを作るには↓</p>
+                </section>
+                <section>
+                    <h2>滑らかなモーションの作り方</h2>
+                    <div style="display: flex;">
+                        <div style="flex: 1;">
+                            <p style="text-align: center; margin-bottom: 10px;">
+                                <strong>→ <a href="interactive_app/waypoints_viewer.html" target="_blank"
+                                        style="color: #3b82f6; text-decoration: underline;">全画面表示</a></strong>
+                            </p>
+                            <iframe data-src="interactive_app/waypoints_viewer.html" width="100%" height="400px"
+                                frameborder="0"></iframe>
+                        </div>
+                        <div style="flex: 1;">
+                            <p><strong>ブレンド<br>（コーナー丸め）</strong></p>
+                            <ul style="font-size: 0.8em;">
+                                <li>教示点で止まらず手前で丸めて通過</li>
+                                <li>stop point ⇔ fly-by point</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <p>メーカーごとの指定方法↓</p>
+                </section>
+                <section>
+                    <h2>ブレンドの指定はメーカーで違う</h2>
+                    <table style="font-size: 0.6em; margin: 0 auto;">
+                        <thead>
+                            <tr><th>メーカー</th><th>呼び方</th><th>指定する量</th><th>例</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>UR</td><td>blend radius</td><td>丸めの半径 [mm]</td><td>r=10mm</td></tr>
+                            <tr><td>ABB</td><td>zone data（fly-by point）</td><td>教示点からのゾーン半径 [mm]</td><td><code>z10</code></td></tr>
+                            <tr><td>KUKA</td><td>approximate positioning</td><td>距離 / 速度 / 時間から選択</td><td>mm, %, s</td></tr>
+                            <tr><td>FANUC</td><td>termination type <code>CNT</code></td><td>経路に対する割合（無次元）</td><td><code>CNT100</code></td></tr>
+                            <tr><td>安川</td><td>PL（position level）</td><td>離散レベル 0〜8</td><td><code>PL=5</code></td></tr>
+                        </tbody>
+                    </table>
+                    <ul style="font-size: 0.75em;">
+                        <li>概念は同じでも<strong>「半径」で指定するのはURなど一部だけ</strong></li>
+                        <li>このスライドでは概念を「ブレンド」、URでの指定量を「ブレンド半径」と呼びます</li>
+                    </ul>
+                    <p style="font-size: 0.5em; color: #aaa;">
+                        ※ 軌道計画の LSPB（Linear Segments with Parabolic Blends）の "blend" は速度プロファイルを滑らかにする話で、コーナー丸めとは別物です
+                    </p>
+                </section>
+                <section>
+                    <h2>補間方法とブレンドは独立した軸</h2>
+                    <div style="display: flex; gap: 20px; font-size: 0.7em;">
+                        <div style="flex: 1; border: 2px solid #f472b6; border-radius: 10px; padding: 10px;">
+                            <strong>軸A：補間方法</strong><br>PTP / LIN / CIRC<br>→ どう動くか
+                        </div>
+                        <div style="flex: 1; border: 2px solid #4fc3f7; border-radius: 10px; padding: 10px;">
+                            <strong>軸B：経由点の扱い</strong><br>停止 / 丸めて通過<br>→ 経由点で止まるか
+                        </div>
+                    </div>
+                    <pre><code class="language-python" data-trim>
+movel(p1, a=1.2, v=0.25, r=0)     # p1 で停止してから次へ（stop point）
+movel(p1, a=1.2, v=0.25, r=0.05)  # p1 の 50mm 手前から丸めて通過（fly-by）
+                    </code></pre>
+                    <ul style="font-size: 0.7em;">
+                        <li>URでは軸Bが全move関数の引数 <code>r</code> 1つに集約 → 2軸が独立だと見えやすい</li>
+                        <li>「<code>movel</code>なのに角が丸まって干渉した」は軸Bの問題</li>
+                    </ul>
+                </section>
+                <section>
+                    <h2>ブレンド半径の良し悪し（URの例）</h2>
+                    <div style="display: flex;">
+                        <div style="flex: 1;">
+                            <p style="text-align: center; margin-bottom: 10px;">
+                                <strong>→ <a href="interactive_app/ur_blend_radius.html" target="_blank"
+                                        style="color: #3b82f6; text-decoration: underline;">全画面表示</a></strong>
+                            </p>
+                            <iframe data-src="interactive_app/ur_blend_radius.html" width="100%" height="400px"
+                                frameborder="0"></iframe>
+                        </div>
+                        <div style="flex: 1;">
+                            <ul>
+                                <li>二等分線を中心とした円が新しい経路です</li>
+                                <li>点を正確に通過しないので細かい動きはできません</li>
+                                <li>動作精度と動きの滑らかさのトレードオフで調整が必要です</li>
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+                <section>
+                    <h2>URでブレンドを使うときの注意</h2>
+                    <ul>
+                        <li><strong>隣り合うブレンド円を重ねない</strong>
+                            <ul style="font-size: 0.8em;">
+                                <li>重なると実行時エラー</li>
+                                <li>目安：<code>r</code> &lt; 教示点間距離の半分</li>
+                            </ul>
+                        </li>
+                        <li><strong>最初と最後の点はブレンドできない</strong>
+                            <ul style="font-size: 0.8em;">
+                                <li>停止状態から / への遷移になるため</li>
+                            </ul>
+                        </li>
+                    </ul>
+                </section>
+                <section>
+                    <h2>補足：丸めずに連続で動けない？</h2>
+                    <div style="display: flex; align-items: center; gap: 20px;">
+                        <div style="flex: 1;">
+                            <svg viewBox="0 0 300 220" width="100%" aria-label="角と丸めたコーナーの速度ベクトル">
+                                <defs>
+                                    <marker id="arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                                        <path d="M0,0 L10,5 L0,10 z" fill="#4fc3f7"></path>
+                                    </marker>
+                                </defs>
+                                <!-- 角 -->
+                                <polyline points="20,200 120,200 120,100" fill="none" stroke="#fb923c" stroke-width="4"></polyline>
+                                <line x1="85" y1="190" x2="115" y2="190" stroke="#4fc3f7" stroke-width="3" marker-end="url(#arrow-blue)"></line>
+                                <line x1="130" y1="195" x2="130" y2="165" stroke="#4fc3f7" stroke-width="3" marker-end="url(#arrow-blue)"></line>
+                                <text x="70" y="90" fill="#f472b6" font-size="15" text-anchor="middle">ρ = 0</text>
+                                <text x="70" y="40" fill="#e5e7eb" font-size="13" text-anchor="middle">向きが瞬時に変わる</text>
+                                <text x="70" y="60" fill="#e5e7eb" font-size="13" text-anchor="middle">→ 加速度 ∞</text>
+                                <!-- 丸め -->
+                                <path d="M170,200 L230,200 A40,40 0 0 0 270,160 L270,100" fill="none" stroke="#fb923c" stroke-width="4"></path>
+                                <line x1="252" y1="194" x2="268" y2="178" stroke="#4fc3f7" stroke-width="3" marker-end="url(#arrow-blue)"></line>
+                                <text x="225" y="90" fill="#f472b6" font-size="15" text-anchor="middle">ρ &gt; 0</text>
+                                <text x="225" y="40" fill="#e5e7eb" font-size="13" text-anchor="middle">向きが連続に変わる</text>
+                                <text x="225" y="60" fill="#e5e7eb" font-size="13" text-anchor="middle">→ 加速度は有限</text>
+                            </svg>
+                        </div>
+                        <div style="flex: 1.2;">
+                            <ul style="font-size: 0.75em;">
+                                <li>直線の角は位置は連続でも<strong>速度の向きが不連続</strong>（C⁰ だが C¹ でない）</li>
+                                <li>法線加速度 a<sub>n</sub> = v² / ρ は角（ρ = 0）で発散</li>
+                                <li>角で選べるのは2つだけ
+                                    <ul>
+                                        <li><strong>v = 0</strong>：止まる（r = 0）→ 時間を失う</li>
+                                        <li><strong>ρ &gt; 0</strong>：丸める（r &gt; 0）→ 形を失う</li>
+                                    </ul>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                    <p style="font-size: 0.7em;">丸めるのは妥協ではなく、<strong>角を止まらずに通る唯一の方法</strong></p>
+                </section>
+                <section>
+                    <h2>補足：ブレンド半径は精度と速度の交換レート</h2>
+                    <p style="font-size: 1.1em; margin-bottom: 0;">v<sub>max</sub> = √( a<sub>max</sub> · r )</p>
+                    <p style="font-size: 0.55em; margin-top: 4px;">曲線を通ると向心加速度 v²/ρ がかかる → v²/ρ ≤ a<sub>max</sub> を v について解いたもの</p>
+                    <table style="font-size: 0.6em; margin: 0 auto;">
+                        <thead>
+                            <tr><th>許容加速度 a<sub>max</sub></th><th>ブレンド半径 r</th><th>コーナー通過速度の上限</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>2 m/s²</td><td>50 mm</td><td>0.32 m/s</td></tr>
+                            <tr><td>2 m/s²</td><td>10 mm</td><td>0.14 m/s</td></tr>
+                        </tbody>
+                    </table>
+                    <ul style="font-size: 0.7em;">
+                        <li>r を小さくすると経路は正確になるが、コーナーで自動的に減速する</li>
+                        <li>「ブレンド半径を小さくしたら遅くなった」の答えはこの式</li>
+                    </ul>
+                    <p style="font-size: 0.45em; color: #aaa;">※ 90°コーナーを半径 r の円弧で丸めた場合。一般には r ではなく曲率半径 ρ で v<sub>max</sub> = √(a<sub>max</sub> · ρ)</p>
+                </section>
+                <section>
+                    <h2>補足：止まる vs 丸める</h2>
+                    <p style="text-align: center; margin: 0 0 6px; font-size: 0.6em;">
+                        <strong>→ <a href="interactive_app/blend_physics.html" target="_blank"
+                                style="color: #3b82f6; text-decoration: underline;">全画面表示</a></strong>
+                        　r を変えて通過速度と所要時間、a<sub>n</sub> の跳び方を比べる
+                    </p>
+                    <iframe data-src="interactive_app/blend_physics.html" width="100%" height="500px"
+                        frameborder="0"></iframe>
+                </section>
+                <section>
+                    <h2>補足：丸めない連続パスはある？</h2>
+                    <ul style="font-size: 0.75em;">
+                        <li>教示点を通るスプライン（KUKA の SPL、CNC の NURBS 補間など）でも、<strong>折れ線の角は通らない</strong></li>
+                        <li>違うのは<strong>誤差の置き場所</strong>だけ</li>
+                    </ul>
+                    <table style="font-size: 0.6em; margin: 0 auto;">
+                        <thead>
+                            <tr><th>方式</th><th>教示点そのもの</th><th>教示点を結ぶ折れ線</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>停止点</td><td>通る</td><td>一致する（ただし止まる）</td></tr>
+                            <tr><td>ブレンド</td><td><strong>通らない</strong>（手前で丸める）</td><td>コーナー付近でずれる</td></tr>
+                            <tr><td>スプライン</td><td>通る</td><td><strong>点と点の間でずれる</strong></td></tr>
+                        </tbody>
+                    </table>
+                    <p style="font-size: 0.7em;">「誤差ゼロで滑らか」は存在せず、どちらのずれを許すかの設計判断</p>
+                </section>
+                <section>
+                    <h2>補足：振動はどこから来る？</h2>
+                    <ul style="font-size: 0.75em;">
+                        <li>円弧ブレンドは向きは連続（C¹）だが<strong>曲率が不連続</strong>（C² でない）</li>
+                        <li>円弧に入る瞬間 a<sub>n</sub> が 0 → v²/r に跳ぶ → ジャーク ∞ → 構造を揺らして残留振動</li>
+                        <li>上位の制御器はクロソイド・5次多項式・Bスプラインで<strong>曲率も連続</strong>にする</li>
+                    </ul>
+                    <ol style="font-size: 0.6em;">
+                        <li>角を速度 &gt; 0 で通れない（幾何）</li>
+                        <li>関節トルク・加速度に上限がある（アクチュエータ）</li>
+                        <li>停止を挟むとサイクルタイムが伸びる（生産性）</li>
+                        <li><strong>加速度の急変が振動を励起する（構造）</strong></li>
+                        <li>振動と停止が加工品質を落とす（プロセス）</li>
+                    </ol>
+                    <p style="font-size: 0.6em; color: #aaa;">「振動するから丸める」は因果が逆。丸め方が粗いと振動する</p>
+                </section>
+                <section>
+                    <h2>補足：現場でブレンドが必須な理由</h2>
+                    <div style="display: flex; gap: 30px; font-size: 0.7em;">
+                        <div style="flex: 1;">
+                            <h3 style="font-size: 1.1em;">なぜ必要か</h3>
+                            <ul>
+                                <li><strong>サイクルタイム</strong>：毎点で減速・加速・整定。ブレンドだけで2〜3割縮むことも</li>
+                                <li><strong>プロセス</strong>：塗布・溶接・塗装は速度一定が必要。<strong>止まれないから丸める</strong></li>
+                                <li><strong>機械寿命</strong>：減速機・ブレーキへの繰り返し荷重</li>
+                            </ul>
+                        </div>
+                        <div style="flex: 1;">
+                            <h3 style="font-size: 1.1em;">なぜ「円弧」で「半径」指定か</h3>
+                            <ul>
+                                <li>計算が軽い</li>
+                                <li><strong>ずれの上限が保証できる</strong>：TCPは教示点から r 以内</li>
+                                <li>「ワークから30mm離したいので r は20mmまで」と干渉を設計できる</li>
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+
+
+            </section>
+            <section>
+
+                <section>
+                    <h2>プログラムから動かす(URの例)</h2>
+                    <p style="font-size: 0.6em; margin: 0 0 6px;">Python ライブラリ ur_rtde で、前の URScript と同じ動作を書く</p>
+                    <pre style="font-size: 0.42em; width: 100%;"><code class="language-python external-code" data-src="code/ur_rtde_example.py" data-trim></code></pre>
+                    <ul style="font-size: 0.6em;">
+                        <li>関数の対応は同じ（moveJ / moveL）。違いは <strong>①引数順が (speed, acceleration)</strong>、<strong>②ブレンドは経路で渡す</strong>、<strong>③moveC が無い</strong></li>
+                    </ul>
+                </section>
+            </section>
+
+            <section>
+                <section>
+                    <h2>ロボットアームの精度について</h2>
+                    <div style="display: flex;">
+                        <div style="flex: 1;">
+                            <div style="position: relative;">
+                                <img src="media/robot_accuracy_example1.png" style="width: 100%; display: block; margin: 0;">
+                                <div style="position: absolute; left: 6%; top: 75%; width: 28%; height: 6.5%;
+                                            border: 4px solid red; box-sizing: border-box;"></div>
+                            </div>
+                        </div>
+                        <div style="flex: 1;">
+                            <ul>
+                                <li>仕様書は絶対位置決め精度ではない！</li>
+                                <li>ISO9283は同じ動作の繰り返し精度を測定する</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <p>位置がズレる原因↓</p>
+                </section>
+                <section>
+                    <h2>位置がズレる原因は3つ</h2>
+                    <div style="display: flex; gap: 14px; font-size: 0.5em; text-align: left;">
+                        <div style="flex: 1; border: 2px solid #4fc3f7; border-radius: 10px; padding: 12px;">
+                            <h3 style="font-size: 1.4em; color: #4fc3f7; text-align: center;">① 設計と実機のズレ</h3>
+                            <ul>
+                                <li>リンク長の公差、原点オフセット</li>
+                                <li>TCP・ベース設置の測定誤差</li>
+                            </ul>
+                            <p style="color: #86efac;">毎回同じだけずれる<br>→ 校正・ティーチングで吸収できる</p>
+                        </div>
+                        <div style="flex: 1; border: 2px solid #fb923c; border-radius: 10px; padding: 12px;">
+                            <h3 style="font-size: 1.4em; color: #fb923c; text-align: center;">② 時間変動</h3>
+                            <ul>
+                                <li>暖機による熱ドリフト（0.05〜0.2 mm）</li>
+                                <li>経年でバックラッシュが増える</li>
+                            </ul>
+                            <p style="color: #fda4af;">校正では取れない</p>
+                        </div>
+                        <div style="flex: 1; border: 2px solid #f472b6; border-radius: 10px; padding: 12px;">
+                            <h3 style="font-size: 1.4em; color: #f472b6; text-align: center;">③ 動作条件</h3>
+                            <ul>
+                                <li>進入方向（バックラッシュ）</li>
+                                <li>速度、ペイロード、姿勢</li>
+                            </ul>
+                            <p style="color: #fda4af;">同じ点でも指令の出し方で変わる</p>
+                        </div>
+                    </div>
+                    <p style="font-size: 0.65em; margin-top: 24px;">絶対誤差の<strong>大きさ</strong>を決めるのは①<br><strong>実務で悩まされる</strong>のは②と③</p>
+                    <aside class="notes">
+                        質疑で聞かれたとき用:
+                        ・電源の OFF/ON では位置はずれない（アブソリュートエンコーダが位置を保持している）。
+                        ・ずれるのはエンコーダのバックアップ電池切れやエンコーダ・モータ交換でマスタリング（原点情報）を失ったとき。これは保守イベントとして別扱い。
+                    </aside>
+                </section>
+            </section>
+
+            <section>
+                <section>
+                    <h2>位置制御だけでは難しいタスク</h2>
+                    <div style="display: flex;">
+                        <div style="flex: 1;">
+                            <img src="media/peg_in_hole.png">
+                        </div>
+                        <div style="flex: 1;">
+                            <ul>
+                                <li>狭い場所に部品を入れる(例:Peg-in-holeタスク)などは位置制御だけだと難しい</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <p>どういった工夫があるのか↓</p>
+                </section>
+                <section>
+                    <h2>RCC(Remote Center Compliance)</h2>
+                    <div style="display: flex;">
+                        <div style="flex: 1;">
+                            <iframe width="560" height="315"
+                                src="https://www.youtube.com/embed/roXG3rqu5Fw?si=Q0jjNtlZG_UchMwR"
+                                title="YouTube video player" frameborder="0"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                                referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+                        </div>
+                        <div style="flex: 1;">
+                            <ul>
+                                <li>部品を嵌め合わせるなどの作業のずれを機械的に補償するツール</li>
+                                <li>RCC自体はコンプライアンス制御に置き換わっている印象だが、柔らかい部品で緩衝する考えは治具づくりで有用</li>
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+                <section>
+                    <h2>コンプライアンス制御</h2>
+                    <div style="display: flex;">
+                        <div style="flex: 1;">
+                            <iframe width="560" height="315"
+                                src="https://www.youtube.com/embed/0INX9IgeaU0?si=dk8U_MYG2i9imcqk&amp;start=18"
+                                title="YouTube video player" frameborder="0"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                                referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+                        </div>
+                        <div style="flex: 1;">
+                            <ul>
+                                <li>ばねのような制御をセンサでソフトウェア的に実現</li>
+                                <li>手先のフォーストルクセンサを使う場合と使わない場合があります</li>
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+                <section>
+                    <h2>フォース制御</h2>
+                    <div style="display: flex;">
+                        <div style="flex: 1;">
+                            <iframe width="560" height="315"
+                                src="https://www.youtube.com/embed/FKR04ZJv-SE?si=JDvABagKXgivwWN_"
+                                title="YouTube video player" frameborder="0"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                                referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+                        </div>
+                        <div style="flex: 1;">
+                            <ul>
+                                <li>任意の軸だけ一定の力をかける制御</li>
+                                <li>手先にフォーストルクセンサが必要です</li>
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+                <section>
+                    <h2>フォース制御とコンプライアンス制御の違い</h2>
+                    <div style="display: flex;">
+                        <div style="flex: 1;">
+                            <p style="text-align: center; margin-bottom: 10px;">
+                                <strong>→ <a href="interactive_app/force_control.html" target="_blank"
+                                        style="color: #3b82f6; text-decoration: underline;">全画面表示</a></strong>
+                            </p>
+                            <iframe data-src="interactive_app/force_control.html" width="100%" height="180px"
+                                frameborder="0"></iframe>
+                        </div>
+                        <div style="flex: 1;">
+                            <ul>
+                                <li>フォース制御 → 一定の力をかける</li>
+                                <li>コンプライアンス制御 → ばねのように柔らか</li>
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+
+            </section>
+
+            <section>
+                <h2>ありがとうございました</h2>
+                <p>スライドとアプリはこちらから何度でも見返せます</p>
+                <p><a href="https://yusakunakajima.github.io/materials-dx-bootcamp-robot-arm/" style="color: #3b82f6; text-decoration: underline; font-size: 0.8em;">yusakunakajima.github.io/materials-dx-bootcamp-robot-arm</a></p>
+            </section>
+
+        </div>
+    </div>
+
+    <script src="assets/vendor/reveal.js/dist/reveal.js"></script>
+    <script src="assets/chapter-numbers.js"></script>
+    <script src="assets/vendor/reveal.js/plugin/notes/notes.js"></script>
+    <script src="assets/vendor/reveal.js/plugin/markdown/markdown.js"></script>
+    <script src="assets/vendor/reveal.js/plugin/highlight/highlight.js"></script>
+    <script src="assets/vendor/reveal.js/plugin/zoom/zoom.js"></script>
+
+    <script src="assets/vendor/reveal.js-menu/menu.js"></script>
+    <script src="assets/vendor/reveal.js-plugins/chalkboard/plugin.js"></script>
+
+    <script src="assets/vendor/highlight.js/highlight.min.js"></script>
+    <script src="assets/vendor/highlight.js/languages/xml.min.js"></script>
+    <script src="assets/vendor/highlight.js/languages/python.min.js"></script>
+    <script src="assets/vendor/highlight.js/languages/yaml.min.js"></script>
+
+    <script>
+        // 外部コードファイルを読み込む関数
+        async function loadExternalCode() {
+            try {
+                const codeElements = document.querySelectorAll('.external-code');
+                for (const element of codeElements) {
+                    const source = element.getAttribute('data-src');
+                    if (source) {
+                        const response = await fetch(source);
+                        const text = await response.text();
+                        element.textContent = text;
+                    }
+                }
+                // コードハイライトを再適用
+                hljs.highlightAll();
+            } catch (error) {
+                console.error('コードファイルの読み込みに失敗しました:', error);
+            }
+        }
+
+        function copyCodeToClipboard(button) {
+            const pre = button.closest('pre');
+            const code = pre.querySelector('code');
+            navigator.clipboard.writeText(code.innerText).then(function () {
+                button.innerText = 'Copied!';
+                setTimeout(function () {
+                    button.innerText = 'Copy';
+                }, 2000);
+            }, function (err) {
+                console.error('Async: Could not copy text: ', err);
+            });
+        }
+
+        // More info about initialization & config:
+        // - https://revealjs.com/initialization/
+        // - https://revealjs.com/config/
+        Reveal.initialize({
+            // 基本的な表示設定
+            controls: true,   // ナビゲーションUIを表示
+            progress: true,   // 進捗バーを表示
+            center: true,     // スライドを中央揃え
+            hash: true,       // URLにスライド番号を反映
+            slideNumber: chapterSlideNumber, // 章-連番 (assets/chapter-numbers.js)
+
+            // プラグインの有効化
+            plugins: [
+                RevealMarkdown,
+                RevealHighlight,
+                RevealNotes,
+                RevealZoom,      // Zoomプラグインを有効化
+                RevealMenu,      // Menuプラグインを有効化
+                RevealChalkboard // Chalkboardプラグインを有効化
+            ],
+
+            // 各プラグインの設定（任意）
+            menu: {
+                numbers: true, // 目次にスライド番号を表示
+                title: 'プレゼンテーション目次' // メニューのタイトル
+            },
+            chalkboard: {
+                boardmarkerWidth: 3,
+                chalkWidth: 7,
+                transition: 200,
+                theme: "chalkboard"
+            },
+
+            // キーボードショートカットのカスタマイズ
+            keyboard: {
+                'm': function () { RevealMenu.toggle(); }, // 'm'キーでメニューを切り替え
+
+                // その他のChalkboardショートカットはデフォルトで有効
+            }
+        });
+
+        // Reveal.js初期化後に外部コードを読み込み
+        Reveal.on('ready', function () {
+            loadExternalCode().then(() => {
+                hljs.highlightAll();
+
+                // Add copy buttons to all pre blocks
+                let preblocks = document.querySelectorAll('pre');
+                preblocks.forEach(function (pre) {
+                    let button = document.createElement('button');
+                    button.className = 'copy-button';
+                    button.innerText = 'Copy';
+                    button.addEventListener('click', function () {
+                        copyCodeToClipboard(this);
+                    });
+                    pre.appendChild(button);
+                });
+            });
+        });
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ロボット動作軌跡 比較シミュレーター (PTP補間改善版)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Noto+Sans+JP:wght@400;700&display=swap"
+        rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', 'Noto Sans JP', sans-serif;
+            margin: 0;
+            overflow: hidden;
+            background-color: #111827;
+            color: #f3f4f6;
+        }
+
+        #canvas-container {
+            width: 100%;
+            height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        #ui-container {
+            position: absolute;
+            top: 1rem;
+            left: 1rem;
+            z-index: 10;
+            pointer-events: none;
+            max-height: calc(100vh - 2rem);
+            overflow-y: auto;
+        }
+        /* For Webkit browsers */
+        #ui-container::-webkit-scrollbar {
+            width: 8px;
+        }
+        #ui-container::-webkit-scrollbar-track {
+            background: rgba(31, 41, 55, 0.8);
+            border-radius: 10px;
+        }
+        #ui-container::-webkit-scrollbar-thumb {
+            background: #4b5563;
+            border-radius: 10px;
+        }
+        #ui-container::-webkit-scrollbar-thumb:hover {
+            background: #6b7280;
+        }
+
+
+        .control-panel {
+            background-color: rgba(31, 41, 55, 0.8);
+            backdrop-filter: blur(10px);
+            padding: 1rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            pointer-events: auto;
+            width: 500px;
+            max-width: 90vw;
+        }
+
+        .jog-btn {
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .control-panel button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .control-panel input[type="number"] {
+            -moz-appearance: textfield;
+        }
+
+        .control-panel input::-webkit-outer-spin-button,
+        .control-panel input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        .radio-label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.5rem;
+            transition: background-color 0.2s;
+        }
+        input[type="radio"]:checked + .radio-label {
+            background-color: #3b82f6;
+        }
+        .jog-panel-container.disabled {
+            opacity: 0.6;
+            pointer-events: none;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div id="ui-container">
+        <div class="control-panel">
+            <h1 class="text-xl font-bold text-center mb-4 text-white">ロボット動作軌跡 比較シミュレーター</h1>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <p class="text-sm font-bold text-gray-400">コントロール</p>
+                    <div class="flex flex-col space-y-2 mt-2">
+                        <button id="start-btn"
+                            class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded-lg">アニメーション開始</button>
+                        <button id="reset-btn"
+                            class="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-4 rounded-lg">リセット</button>
+                    </div>
+                </div>
+                <div>
+                    <p class="text-sm font-bold text-gray-400">動作モード選択</p>
+                    <div id="mode-selector" class="mt-2 text-left bg-gray-800 p-2 rounded-lg h-full text-sm space-y-1">
+                        <div>
+                            <input type="radio" name="animation-mode" value="PTP" id="mode-ptp" class="hidden" checked>
+                            <label for="mode-ptp" class="radio-label">PTP (関節補間)</label>
+                        </div>
+                        <div>
+                            <input type="radio" name="animation-mode" value="LIN" id="mode-lin" class="hidden">
+                            <label for="mode-lin" class="radio-label">LIN (直線補間)</label>
+                        </div>
+                        <div>
+                            <input type="radio" name="animation-mode" value="CIRC" id="mode-circ" class="hidden">
+                            <label for="mode-circ" class="radio-label">CIRC (円弧補間)</label>
+                        </div>
+                        <div>
+                            <input type="radio" name="animation-mode" value="COMP" id="mode-comp" class="hidden">
+                            <label for="mode-comp" class="radio-label font-bold text-yellow-300">全軌道比較</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-4 pt-4 border-t border-gray-600">
+                <h2 class="text-lg font-bold text-center mb-2 text-white">エンドエフェクタ選択</h2>
+                <div id="end-effector-selector" class="flex justify-center space-x-4 bg-gray-800 p-2 rounded-lg">
+                     <div>
+                        <input type="radio" name="end-effector-type" value="A" id="ee-type-a" class="hidden">
+                        <label for="ee-type-a" class="radio-label text-sm">タイプA (コーン)</label>
+                    </div>
+                    <div>
+                        <input type="radio" name="end-effector-type" value="B" id="ee-type-b" class="hidden" checked>
+                        <label for="ee-type-b" class="radio-label text-sm">タイプB (グリッパー)</label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-4 pt-4 border-t border-gray-600">
+                <h2 class="text-lg font-bold text-center mb-2 text-white">座標設定 (Z-up 右手系)</h2>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <h3 class="font-semibold text-pink-400 mb-2">開始点 (X, Y, Z)</h3>
+                        <div class="grid grid-cols-3 gap-2">
+                            <input type="number" id="start-x" class="bg-gray-700 text-white rounded p-1 text-center" value="40">
+                            <input type="number" id="start-y" class="bg-gray-700 text-white rounded p-1 text-center" value="20">
+                            <input type="number" id="start-z" class="bg-gray-700 text-white rounded p-1 text-center" value="70">
+                        </div>
+                    </div>
+                     <div>
+                        <h3 class="font-semibold text-teal-400 mb-2">中間点 (X, Y, Z)</h3>
+                        <div class="grid grid-cols-3 gap-2">
+                            <input type="number" id="via-x" class="bg-gray-700 text-white rounded p-1 text-center" value="60">
+                            <input type="number" id="via-y" class="bg-gray-700 text-white rounded p-1 text-center" value="0">
+                            <input type="number" id="via-z" class="bg-gray-700 text-white rounded p-1 text-center" value="30">
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="font-semibold text-orange-400 mb-2">終了点 (X, Y, Z)</h3>
+                        <div class="grid grid-cols-3 gap-2">
+                            <input type="number" id="end-x" class="bg-gray-700 text-white rounded p-1 text-center" value="20">
+                            <input type="number" id="end-y" class="bg-gray-700 text-white rounded p-1 text-center" value="-20">
+                            <input type="number" id="end-z" class="bg-gray-700 text-white rounded p-1 text-center" value="10">
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-4 flex justify-center">
+                    <button id="update-pos-btn" class="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-6 rounded-lg">座標を更新</button>
+                </div>
+                <p id="error-message" class="text-yellow-400 text-center mt-2 text-sm h-4"></p>
+            </div>
+            
+            <div class="mt-4 pt-4 border-t border-gray-600">
+                <h2 class="text-lg font-bold text-center mb-2 text-white">速度設定</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="joint-speed" class="font-semibold text-pink-400 mb-2 block text-center">PTP目標速度 (deg/s)</label>
+                        <input type="number" id="joint-speed" class="bg-gray-700 text-white rounded p-1 text-center w-full" value="90">
+                    </div>
+                    <div>
+                        <label for="tcp-speed" class="font-semibold text-teal-400 mb-2 block text-center">LIN/CIRC 手先速度 (mm/s)</label>
+                        <input type="number" id="tcp-speed" class="bg-gray-700 text-white rounded p-1 text-center w-full" value="100">
+                    </div>
+                </div>
+                <div class="mt-4">
+                     <label for="joint-speed-limit" class="font-semibold text-yellow-400 mb-2 block text-center">全体 関節最大速度 (rad/s)</label>
+                     <input type="number" id="joint-speed-limit" class="bg-gray-700 text-white rounded p-1 text-center w-full" value="1.0">
+                </div>
+            </div>
+
+            <div id="jog-panel-container" class="mt-4 pt-4 border-t border-gray-600">
+                <h2 class="text-lg font-bold text-center mb-2 text-white">ジョグ操作</h2>
+                <div id="jog-mode-selector" class="flex justify-center space-x-2 bg-gray-800 p-2 rounded-lg mb-4">
+                    <div>
+                        <input type="radio" name="jog-mode" value="joint" id="jog-mode-joint" class="hidden" checked>
+                        <label for="jog-mode-joint" class="radio-label text-sm">関節</label>
+                    </div>
+                    <div>
+                        <input type="radio" name="jog-mode" value="base" id="jog-mode-base" class="hidden">
+                        <label for="jog-mode-base" class="radio-label text-sm">ベース</label>
+                    </div>
+                    <div>
+                        <input type="radio" name="jog-mode" value="tool" id="jog-mode-tool" class="hidden">
+                        <label for="jog-mode-tool" class="radio-label text-sm">ツール</label>
+                    </div>
+                </div>
+                <div id="jog-controls">
+                    <div id="joint-jog-panel">
+                        <div class="flex items-center justify-between mb-2 p-1 bg-gray-900/50 rounded-md">
+                            <span class="font-bold w-16 text-center">J1 (deg)</span>
+                            <button class="jog-btn bg-gray-600 hover:bg-gray-500 w-10 h-8 rounded" data-type="joint" data-joint="0" data-dir="-1">-</button>
+                            <input type="text" id="j1-angle-display" class="bg-gray-700 text-white w-24 text-center rounded" readonly>
+                            <button class="jog-btn bg-gray-600 hover:bg-gray-500 w-10 h-8 rounded" data-type="joint" data-joint="0" data-dir="1">+</button>
+                        </div>
+                        <div class="flex items-center justify-between mb-2 p-1 bg-gray-900/50 rounded-md">
+                            <span class="font-bold w-16 text-center">J2 (deg)</span>
+                            <button class="jog-btn bg-gray-600 hover:bg-gray-500 w-10 h-8 rounded" data-type="joint" data-joint="1" data-dir="-1">-</button>
+                            <input type="text" id="j2-angle-display" class="bg-gray-700 text-white w-24 text-center rounded" readonly>
+                            <button class="jog-btn bg-gray-600 hover:bg-gray-500 w-10 h-8 rounded" data-type="joint" data-joint="1" data-dir="1">+</button>
+                        </div>
+                        <div class="flex items-center justify-between p-1 bg-gray-900/50 rounded-md">
+                            <span class="font-bold w-16 text-center">J3 (deg)</span>
+                            <button class="jog-btn bg-gray-600 hover:bg-gray-500 w-10 h-8 rounded" data-type="joint" data-joint="2" data-dir="-1">-</button>
+                            <input type="text" id="j3-angle-display" class="bg-gray-700 text-white w-24 text-center rounded" readonly>
+                            <button class="jog-btn bg-gray-600 hover:bg-gray-500 w-10 h-8 rounded" data-type="joint" data-joint="2" data-dir="1">+</button>
+                        </div>
+                    </div>
+                    <div id="cartesian-jog-panel" class="hidden">
+                        <div class="flex items-center justify-between mb-2 p-1 bg-gray-900/50 rounded-md">
+                            <span class="font-bold w-16 text-center text-red-400">X (mm)</span>
+                            <button class="jog-btn bg-red-600 hover:bg-red-500 w-10 h-8 rounded" data-type="cartesian" data-axis="x" data-dir="-1">-</button>
+                            <input type="text" id="x-pos-display" class="bg-gray-700 text-white w-24 text-center rounded" readonly>
+                            <button class="jog-btn bg-red-600 hover:bg-red-500 w-10 h-8 rounded" data-type="cartesian" data-axis="x" data-dir="1">+</button>
+                        </div>
+                        <div class="flex items-center justify-between mb-2 p-1 bg-gray-900/50 rounded-md">
+                            <span class="font-bold w-16 text-center text-green-400">Y (mm)</span>
+                            <button class="jog-btn bg-green-600 hover:bg-green-500 w-10 h-8 rounded" data-type="cartesian" data-axis="y" data-dir="-1">-</button>
+                            <input type="text" id="y-pos-display" class="bg-gray-700 text-white w-24 text-center rounded" readonly>
+                            <button class="jog-btn bg-green-600 hover:bg-green-500 w-10 h-8 rounded" data-type="cartesian" data-axis="y" data-dir="1">+</button>
+                        </div>
+                        <div class="flex items-center justify-between p-1 bg-gray-900/50 rounded-md">
+                            <span class="font-bold w-16 text-center text-blue-400">Z (mm)</span>
+                            <button class="jog-btn bg-blue-600 hover:bg-blue-500 w-10 h-8 rounded" data-type="cartesian" data-axis="z" data-dir="-1">-</button>
+                            <input type="text" id="z-pos-display" class="bg-gray-700 text-white w-24 text-center rounded" readonly>
+                            <button class="jog-btn bg-blue-600 hover:bg-blue-500 w-10 h-8 rounded" data-type="cartesian" data-axis="z" data-dir="1">+</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="mt-4 pt-4 border-t border-gray-600">
+                <h2 class="text-lg font-bold text-center mb-2 text-white">各関節のリアルタイム角速度 (rad/s)</h2>
+                <div class="bg-gray-900 p-2 rounded-lg">
+                    <canvas id="velocity-chart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script type="module">
+        // --- ▼▼▼ PTP補間アルゴリズムを追加 ▼▼▼ ---
+        /**
+         * 台形速度プロファイル（Trapezoidal Velocity Profile）を生成するカスタムイージング関数
+         * @param {number} r - 加減速区間の割合 (0 < r < 0.5). e.g., 0.2は20%加速, 60%定速, 20%減速
+         * @returns {function(number): number} TWEEN.jsで使えるイージング関数
+         */
+        function createTrapezoidalEasing(r) {
+            if (r <= 0 || r >= 0.5) {
+                return TWEEN.Easing.Linear.None; // 不正な値の場合はリニアにフォールバック
+            }
+
+            // 正規化された移動距離1を移動するのに必要な、正規化された最大速度
+            const V_max = 1 / (1 - r);
+            
+            return function(t) {
+                if (t < r) {
+                    // 加速区間
+                    return 0.5 * V_max / r * t * t;
+                } else if (t < 1 - r) {
+                    // 定速区間
+                    const p_at_r = 0.5 * V_max * r;
+                    return p_at_r + V_max * (t - r);
+                } else {
+                    // 減速区間
+                    const p_at_1_minus_r = V_max * (1 - 1.5 * r);
+                    const time_in_decel = t - (1 - r);
+                    return p_at_1_minus_r + V_max * time_in_decel - (0.5 * V_max / r) * time_in_decel * time_in_decel;
+                }
+            };
+        }
+        const blendRatio = 0.2; // 加減速区間の割合（合計で40%）
+        const trapezoidalEase = createTrapezoidalEasing(blendRatio);
+        // --- ▲▲▲ PTP補間アルゴリズムを追加 ▲▲▲ ---
+
+
+        // --- 基本設定 ---
+        let scene, camera, renderer, controls;
+        let robot, flange;
+        let isAnimating = false;
+        let startMarkerGroup, endMarkerGroup, viaMarkerGroup;
+        let pathLines = [];
+
+        // --- ロボットの関節とリンク ---
+        const joints = [];
+
+        // --- エンドエフェクタ関連 ---
+        let endEffector;
+        let endEffectorGroupA, endEffectorGroupB;
+        let currentEndEffectorType = 'B';
+        const endEffectorDefs = {
+            'A': { tcpOffset: 6 },
+            'B': { tcpOffset: 12 }
+        };
+
+        // --- ジョグ関連 ---
+        let currentJogMode = 'joint';
+        const jogStep = {
+            joint: THREE.MathUtils.degToRad(1.0),
+            cartesian: 2.0
+        };
+
+        // --- ターゲット ---
+        let startPos = new THREE.Vector3(40, 20, 70);
+        let endPos = new THREE.Vector3(20, -20, 10);
+        let viaPos = new THREE.Vector3(60, 0, 30);
+        
+        // --- 速度プロット用 ---
+        let velocityChart;
+        let lastAngles = { j1: 0, j2: 0, j3: 0 };
+        let lastTime = 0;
+        let animationStartTime = 0;
+
+        // --- 色定義 ---
+        const markerColors = {
+            start: 0xf472b6,
+            end: 0xfb923c,
+            via: 0x2dd4bf
+        };
+        const pathColors = {
+            ptp: 0xf472b6, // Pink
+            lin: 0xfb923c, // Orange
+            circ: 0x2dd4bf, // Teal
+            default: 0xffffff
+        };
+
+        // --- 初期化処理 ---
+        function init() {
+            THREE.Object3D.DefaultUp.set(0, 0, 1);
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x111827);
+            const axesHelper = new THREE.AxesHelper(50);
+            scene.add(axesHelper);
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(60, -60, 80);
+            const container = document.getElementById('canvas-container');
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true;
+            container.appendChild(renderer.domElement);
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(50, -50, 100);
+            directionalLight.castShadow = true;
+            scene.add(directionalLight);
+            const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshStandardMaterial({ color: 0x1f2937 }));
+            ground.receiveShadow = true;
+            scene.add(ground);
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            createRobot();
+            switchEndEffector(currentEndEffectorType);
+            createMarkers();
+            setupUI();
+            createJointVelocityChart();
+            resetScene();
+            animate();
+        }
+
+        // ロボットモデルの作成
+        function createRobot() {
+            robot = new THREE.Group();
+            scene.add(robot);
+            const linkMaterial = new THREE.MeshStandardMaterial({ color: 0x9ca3af, roughness: 0.5, metalness: 0.5 });
+            const jointMaterial = new THREE.MeshStandardMaterial({ color: 0x60a5fa, roughness: 0.4, metalness: 0.6 });
+            const baseHeight = 4;
+            const base = new THREE.Mesh(new THREE.CylinderGeometry(10, 10, baseHeight, 32), new THREE.MeshStandardMaterial({ color: 0x4b5563 }));
+            base.rotation.x = Math.PI / 2;
+            base.position.z = baseHeight / 2;
+            base.castShadow = true;
+            robot.add(base);
+            const j1 = new THREE.Group();
+            j1.position.z = baseHeight;
+            robot.add(j1);
+            joints.push(j1);
+            const j1VisualHeight = 6;
+            const j1Visual = new THREE.Mesh(new THREE.CylinderGeometry(4, 4, j1VisualHeight, 32), jointMaterial);
+            j1Visual.rotation.x = Math.PI / 2;
+            j1Visual.position.z = j1VisualHeight / 2;
+            j1Visual.castShadow = true;
+            j1.add(j1Visual);
+            const l1Height = 20;
+            const l1 = new THREE.Group();
+            l1.position.z = j1VisualHeight;
+            j1.add(l1);
+            const l1Visual = new THREE.Mesh(new THREE.BoxGeometry(6, 6, l1Height), linkMaterial);
+            l1Visual.position.z = l1Height / 2;
+            l1Visual.castShadow = true;
+            l1.add(l1Visual);
+            const j2 = new THREE.Group();
+            j2.position.z = l1Height;
+            l1.add(j2);
+            joints.push(j2);
+            const j2VisualWidth = 8;
+            const j2Visual = new THREE.Mesh(new THREE.CylinderGeometry(5, 5, j2VisualWidth, 32), jointMaterial);
+            j2Visual.castShadow = true;
+            j2.add(j2Visual);
+            const l2Length = 40;
+            const l2 = new THREE.Group();
+            j2.add(l2);
+            const l2Visual = new THREE.Mesh(new THREE.BoxGeometry(l2Length, 5, 5), linkMaterial);
+            l2Visual.position.x = l2Length / 2;
+            l2Visual.castShadow = true;
+            l2.add(l2Visual);
+            const j3 = new THREE.Group();
+            j3.position.x = l2Length;
+            l2.add(j3);
+            joints.push(j3);
+            const j3VisualWidth = 7;
+            const j3Visual = new THREE.Mesh(new THREE.CylinderGeometry(4, 4, j3VisualWidth, 32), jointMaterial);
+            j3Visual.castShadow = true;
+            j3.add(j3Visual);
+            const l3Length = 29;
+            const l3 = new THREE.Group();
+            j3.add(l3);
+            const l3Visual = new THREE.Mesh(new THREE.BoxGeometry(l3Length, 4, 4), linkMaterial);
+            l3Visual.position.x = l3Length / 2;
+            l3Visual.castShadow = true;
+            l3.add(l3Visual);
+            flange = new THREE.Group();
+            flange.position.x = l3Length;
+            l3.add(flange);
+            endEffectorGroupA = new THREE.Group();
+            const eeA_visual = new THREE.Mesh(new THREE.ConeGeometry(3, endEffectorDefs.A.tcpOffset, 16), new THREE.MeshStandardMaterial({ color: 0xfb923c }));
+            eeA_visual.rotation.z = -Math.PI / 2;
+            eeA_visual.position.x = endEffectorDefs.A.tcpOffset / 2;
+            eeA_visual.castShadow = true;
+            endEffectorGroupA.add(eeA_visual);
+            const tcpA = new THREE.Group();
+            tcpA.position.x = endEffectorDefs.A.tcpOffset;
+            tcpA.rotation.y = -Math.PI / 2;
+            endEffectorGroupA.add(tcpA);
+            tcpA.add(new THREE.AxesHelper(5));
+            endEffectorGroupA.tcp = tcpA;
+            endEffectorGroupB = new THREE.Group();
+            const gripperBase = new THREE.Mesh(new THREE.BoxGeometry(4, 5, 5), new THREE.MeshStandardMaterial({ color: 0x6b7280 }));
+            gripperBase.position.x = 2;
+            endEffectorGroupB.add(gripperBase);
+            const finger1 = new THREE.Mesh(new THREE.BoxGeometry(8, 1, 3), new THREE.MeshStandardMaterial({ color: 0x9ca3af }));
+            finger1.position.set(4 + 4, 2, 0);
+            endEffectorGroupB.add(finger1);
+            const finger2 = finger1.clone();
+            finger2.position.y = -2;
+            endEffectorGroupB.add(finger2);
+            const tcpB = new THREE.Group();
+            tcpB.position.x = endEffectorDefs.B.tcpOffset;
+            tcpB.rotation.y = -Math.PI / 2;
+            endEffectorGroupB.add(tcpB);
+            tcpB.add(new THREE.AxesHelper(5));
+            endEffectorGroupB.tcp = tcpB;
+        }
+
+        function switchEndEffector(type) {
+            if (flange.children.length > 0) flange.remove(flange.children[0]);
+            if (type === 'A') {
+                flange.add(endEffectorGroupA);
+                endEffector = endEffectorGroupA.tcp;
+            } else {
+                flange.add(endEffectorGroupB);
+                endEffector = endEffectorGroupB.tcp;
+            }
+            currentEndEffectorType = type;
+        }
+
+        function createLabeledMarker(text, position, color) {
+            const group = new THREE.Group();
+            group.position.copy(position);
+            scene.add(group);
+            const markerSphere = new THREE.Mesh(new THREE.SphereGeometry(1.5), new THREE.MeshBasicMaterial({ color: color }));
+            group.add(markerSphere);
+            return group;
+        }
+
+        function createMarkers() {
+            startMarkerGroup = createLabeledMarker('開始', startPos, markerColors.start);
+            endMarkerGroup = createLabeledMarker('終了', endPos, markerColors.end);
+            viaMarkerGroup = createLabeledMarker('中間', viaPos, markerColors.via);
+        }
+
+        function setupUI() {
+            document.getElementById('start-btn').addEventListener('click', startComparison);
+            document.getElementById('reset-btn').addEventListener('click', resetScene);
+            document.getElementById('update-pos-btn').addEventListener('click', updatePositions);
+            document.querySelectorAll('input[name="end-effector-type"]').forEach(radio => {
+                radio.addEventListener('change', (event) => {
+                    if (isAnimating) return;
+                    switchEndEffector(event.target.value);
+                    resetScene();
+                });
+            });
+            document.querySelectorAll('input[name="jog-mode"]').forEach(radio => {
+                radio.addEventListener('change', (event) => {
+                    currentJogMode = event.target.value;
+                    document.getElementById('joint-jog-panel').style.display = (currentJogMode === 'joint') ? 'block' : 'none';
+                    document.getElementById('cartesian-jog-panel').style.display = (currentJogMode !== 'joint') ? 'block' : 'none';
+                });
+            });
+            setupJogHold();
+        }
+
+        function updatePositions() {
+            if (isAnimating) return;
+            const errorMessage = document.getElementById('error-message');
+            errorMessage.textContent = '';
+            const newStartPos = new THREE.Vector3( parseFloat(document.getElementById('start-x').value), parseFloat(document.getElementById('start-y').value), parseFloat(document.getElementById('start-z').value) );
+            const newEndPos = new THREE.Vector3( parseFloat(document.getElementById('end-x').value), parseFloat(document.getElementById('end-y').value), parseFloat(document.getElementById('end-z').value) );
+            const newViaPos = new THREE.Vector3( parseFloat(document.getElementById('via-x').value), parseFloat(document.getElementById('via-y').value), parseFloat(document.getElementById('via-z').value) );
+            if (!calculateAnglesFor(newStartPos)) { errorMessage.textContent = '開始点が可動範囲外です。'; return; }
+            if (!calculateAnglesFor(newEndPos)) { errorMessage.textContent = '終了点が可動範囲外です。'; return; }
+            if (!calculateAnglesFor(newViaPos)) { errorMessage.textContent = '中間点が可動範囲外です。'; return; }
+            startPos.copy(newStartPos);
+            endPos.copy(newEndPos);
+            viaPos.copy(newViaPos);
+            startMarkerGroup.position.copy(startPos);
+            endMarkerGroup.position.copy(endPos);
+            viaMarkerGroup.position.copy(viaPos);
+            resetScene();
+        }
+
+        // 関節速度予測 ヘルパー関数
+        function estimateMaxJointVelocity(curve, baseDuration) {
+            const steps = 100; // 軌道のサンプリング数
+            const point = new THREE.Vector3();
+            let lastAngles = calculateAnglesFor( (curve instanceof THREE.Line3) ? curve.at(0, point) : curve.getPoint(0) );
+
+            if (!lastAngles) return null; 
+
+            let maxEstimatedVelocity = 0;
+            const dt = baseDuration / steps / 1000.0; // 1ステップあたりの時間 [s]
+            if (dt < 1e-6) return 0;
+
+            for (let i = 1; i <= steps; i++) {
+                const t = i / steps;
+                const currentPoint = (curve instanceof THREE.Line3) ? curve.at(t, point) : curve.getPoint(t);
+                const currentAngles = calculateAnglesFor(currentPoint);
+                
+                if (currentAngles) {
+                    const velJ1 = Math.abs(currentAngles.j1 - lastAngles.j1) / dt;
+                    const velJ2 = Math.abs(currentAngles.j2 - lastAngles.j2) / dt;
+                    const velJ3 = Math.abs(currentAngles.j3 - lastAngles.j3) / dt;
+                    maxEstimatedVelocity = Math.max(maxEstimatedVelocity, velJ1, velJ2, velJ3);
+                    lastAngles = currentAngles;
+                } else {
+                    return Infinity;
+                }
+            }
+            return maxEstimatedVelocity;
+        }
+
+        function startComparison() {
+            if (isAnimating) return;
+            
+            const jointSpeedDeg = parseFloat(document.getElementById('joint-speed').value) || 90;
+            const tcpSpeed = parseFloat(document.getElementById('tcp-speed').value) || 100;
+            const jointSpeedLimitRadInput = parseFloat(document.getElementById('joint-speed-limit').value) || 1.0;
+
+            const jointSpeedRad = THREE.MathUtils.degToRad(Math.max(0.1, jointSpeedDeg));
+            const safeTcpSpeed = Math.max(0.1, tcpSpeed);
+            const jointSpeedLimitRad = Math.max(0.1, jointSpeedLimitRadInput);
+
+            resetScene();
+            isAnimating = true;
+            setJogPanelEnabled(false);
+            document.getElementById('start-btn').disabled = true;
+            document.getElementById('update-pos-btn').disabled = true;
+
+            robot.visible = true;
+            resetVelocityChart();
+            animationStartTime = performance.now();
+            
+            const startAngles = calculateAnglesFor(startPos);
+            if (!startAngles) {
+                document.getElementById('error-message').textContent = '開始点が可動範囲外です。';
+                resetScene(); return;
+            }
+
+            setJointAngles(startAngles);
+            lastAngles = { ...startAngles };
+            lastTime = animationStartTime;
+
+            const selectedMode = document.querySelector('input[name="animation-mode"]:checked').value;
+            
+            const onComplete = () => {
+                isAnimating = false;
+                setJogPanelEnabled(true);
+                document.getElementById('start-btn').disabled = false;
+                document.getElementById('update-pos-btn').disabled = false;
+            };
+
+            switch(selectedMode) {
+                case 'PTP': {
+                    const pathLine = createPathLine(pathColors.ptp);
+                    const endAngles = calculateAnglesFor(endPos);
+                    if (!endAngles) { document.getElementById('error-message').textContent = '終了点が可動範囲外です。'; resetScene(); return; }
+                    
+                    const effectiveJointSpeedRad = Math.min(jointSpeedRad, jointSpeedLimitRad);
+                    const deltaAngles = {
+                        j1: Math.abs(endAngles.j1 - startAngles.j1),
+                        j2: Math.abs(endAngles.j2 - startAngles.j2),
+                        j3: Math.abs(endAngles.j3 - startAngles.j3)
+                    };
+                    const maxAngleChange = Math.max(deltaAngles.j1, deltaAngles.j2, deltaAngles.j3);
+                    
+                    // 台形補間のピーク速度は V_max = V_avg / (1 - r) となるため、durationを調整
+                    const duration = (maxAngleChange / effectiveJointSpeedRad) / (1 - blendRatio) * 1000;
+
+                    new TWEEN.Tween(startAngles).to(endAngles, duration).easing(trapezoidalEase)
+                        .onUpdate((angles) => { setJointAngles(angles); updatePath(pathLine); }).onComplete(onComplete).start();
+                    break;
+                }
+                case 'LIN': {
+                    const pathLine = createPathLine(pathColors.lin);
+                    const lineCurve = new THREE.Line3(startPos, endPos);
+                    
+                    const distance = startPos.distanceTo(endPos);
+                    const baseDuration = (distance / safeTcpSpeed) * 1000;
+                    
+                    const estimatedMaxSpeed = estimateMaxJointVelocity(lineCurve, baseDuration);
+                    if (estimatedMaxSpeed === Infinity) {
+                        document.getElementById('error-message').textContent = 'LIN: 軌道の一部が可動範囲外です。';
+                        resetScene(); return;
+                    }
+                    
+                    let finalDuration = baseDuration;
+                    if (estimatedMaxSpeed && estimatedMaxSpeed > jointSpeedLimitRad) {
+                        const slowdownFactor = estimatedMaxSpeed / jointSpeedLimitRad;
+                        finalDuration = baseDuration * slowdownFactor;
+                    }
+                    
+                    new TWEEN.Tween({ t: 0 }).to({ t: 1 }, finalDuration).easing(TWEEN.Easing.Linear.None)
+                        .onUpdate(({ t }) => {
+                            const targetPoint = new THREE.Vector3();
+                            lineCurve.at(t, targetPoint);
+                            if (solveIK(targetPoint)) { updatePath(pathLine); }
+                        }).onComplete(onComplete).start();
+                    break;
+                }
+                case 'CIRC': {
+                    const pathLine = createPathLine(pathColors.circ);
+                    const colinearityCheck = new THREE.Vector3().crossVectors(new THREE.Vector3().subVectors(viaPos, startPos), new THREE.Vector3().subVectors(endPos, startPos)).length();
+                    
+                    const curve = (colinearityCheck < 0.01)
+                        ? new THREE.Line3(startPos, endPos)
+                        : new THREE.CatmullRomCurve3([startPos, viaPos, endPos]);
+
+                    if (colinearityCheck < 0.01) {
+                         document.getElementById('error-message').textContent = 'CIRC: 各点が直線状のためLINで動作します。';
+                    }
+
+                    const distance = curve.getLength();
+                    const baseDuration = (distance / safeTcpSpeed) * 1000;
+
+                    const estimatedMaxSpeed = estimateMaxJointVelocity(curve, baseDuration);
+                     if (estimatedMaxSpeed === Infinity) {
+                        document.getElementById('error-message').textContent = 'CIRC: 軌道の一部が可動範囲外です。';
+                        resetScene(); return;
+                    }
+
+                    let finalDuration = baseDuration;
+                    if (estimatedMaxSpeed && estimatedMaxSpeed > jointSpeedLimitRad) {
+                        const slowdownFactor = estimatedMaxSpeed / jointSpeedLimitRad;
+                        finalDuration = baseDuration * slowdownFactor;
+                    }
+
+                    new TWEEN.Tween({ t: 0 }).to({ t: 1 }, finalDuration).easing(TWEEN.Easing.Linear.None)
+                        .onUpdate(({ t }) => {
+                            const targetPoint = curve.getPoint(t);
+                            if (solveIK(targetPoint)) { updatePath(pathLine); }
+                        }).onComplete(onComplete).start();
+
+                    break;
+                }
+                case 'COMP': {
+                    const ptpPath = createPathLine(pathColors.ptp);
+                    const linPath = createPathLine(pathColors.lin);
+                    const circPath = createPathLine(pathColors.circ);
+                    
+                    const endAngles = calculateAnglesFor(endPos);
+                    if (!startAngles || !endAngles) { document.getElementById('error-message').textContent = '開始点または終了点が可動範囲外です。'; resetScene(); return; }
+
+                    // PTP duration
+                    const effectivePtpSpeed = Math.min(jointSpeedRad, jointSpeedLimitRad);
+                    const deltaAngles = { j1: Math.abs(endAngles.j1 - startAngles.j1), j2: Math.abs(endAngles.j2 - startAngles.j2), j3: Math.abs(endAngles.j3 - startAngles.j3) };
+                    const durationPtp = (Math.max(deltaAngles.j1, deltaAngles.j2, deltaAngles.j3) / effectivePtpSpeed) / (1 - blendRatio) * 1000;
+
+                    // LIN duration
+                    const lineCurve = new THREE.Line3(startPos, endPos);
+                    const distanceLin = lineCurve.distance();
+                    const baseDurationLin = (distanceLin / safeTcpSpeed) * 1000;
+                    const estMaxSpeedLin = estimateMaxJointVelocity(lineCurve, baseDurationLin);
+                    let durationLin = baseDurationLin;
+                    if (estMaxSpeedLin && estMaxSpeedLin > jointSpeedLimitRad) {
+                        durationLin = baseDurationLin * (estMaxSpeedLin / jointSpeedLimitRad);
+                    }
+                     if (estMaxSpeedLin === Infinity) { document.getElementById('error-message').textContent = 'LIN軌道が範囲外です'; resetScene(); return; }
+
+
+                    // CIRC duration
+                    const circCurve = new THREE.CatmullRomCurve3([startPos, viaPos, endPos]);
+                    const distanceCirc = circCurve.getLength();
+                    const baseDurationCirc = (distanceCirc / safeTcpSpeed) * 1000;
+                    const estMaxSpeedCirc = estimateMaxJointVelocity(circCurve, baseDurationCirc);
+                    let durationCirc = baseDurationCirc;
+                     if (estMaxSpeedCirc && estMaxSpeedCirc > jointSpeedLimitRad) {
+                        durationCirc = baseDurationCirc * (estMaxSpeedCirc / jointSpeedLimitRad);
+                    }
+                    if (estMaxSpeedCirc === Infinity) { document.getElementById('error-message').textContent = 'CIRC軌道が範囲外です'; resetScene(); return; }
+
+                    // Tweens
+                    const circTween = new TWEEN.Tween({t: 0}).to({t: 1}, durationCirc).easing(TWEEN.Easing.Linear.None)
+                        .onStart(() => solveIK(startPos))
+                        .onUpdate(({t}) => { if (solveIK(circCurve.getPoint(t))) updatePath(circPath); }).onComplete(onComplete);
+
+                    const linTween = new TWEEN.Tween({t: 0}).to({t: 1}, durationLin).easing(TWEEN.Easing.Linear.None)
+                        .onStart(() => solveIK(startPos))
+                        .onUpdate(({t}) => { if (solveIK(lineCurve.at(t, new THREE.Vector3()))) updatePath(linPath); }).chain(circTween);
+                    
+                    const ptpTween = new TWEEN.Tween(startAngles).to(endAngles, durationPtp).easing(trapezoidalEase)
+                        .onStart(() => setJointAngles(startAngles))
+                        .onUpdate((angles) => { setJointAngles(angles); updatePath(ptpPath); }).chain(linTween);
+
+                    ptpTween.start();
+                    break;
+                }
+            }
+        }
+
+        function createPathLine(color = pathColors.default) {
+            const material = new THREE.LineBasicMaterial({ color: color, linewidth: 3 });
+            const geometry = new THREE.BufferGeometry();
+            const line = new THREE.Line(geometry, material);
+            scene.add(line);
+            pathLines.push(line);
+            return line;
+        }
+
+        function updatePath(line) {
+            if (!line || !endEffector) return;
+            const currentPoints = line.geometry.getAttribute('position')?.array || [];
+            const newPoint = new THREE.Vector3();
+            endEffector.getWorldPosition(newPoint);
+            const newPoints = new Float32Array(currentPoints.length + 3);
+            newPoints.set(currentPoints);
+            newPoints.set([newPoint.x, newPoint.y, newPoint.z], currentPoints.length);
+            line.geometry.setAttribute('position', new THREE.BufferAttribute(newPoints, 3));
+            line.geometry.attributes.position.needsUpdate = true;
+        }
+
+        function resetScene() {
+            if (isAnimating) { TWEEN.removeAll(); isAnimating = false; }
+            pathLines.forEach(line => {
+                scene.remove(line);
+                line.geometry.dispose();
+                line.material.dispose();
+            });
+            pathLines = [];
+            setJogPanelEnabled(true);
+            document.getElementById('start-btn').disabled = false;
+            document.getElementById('update-pos-btn').disabled = false;
+            const errorMsg = document.getElementById('error-message');
+            if (!errorMsg.textContent.includes('軌道')) { // Do not clear critical path error
+                 errorMsg.textContent = '';
+            }
+            robot.visible = true;
+            resetVelocityChart();
+            solveIK(startPos);
+        }
+
+        function solveIK(target) {
+            const angles = calculateAnglesFor(target);
+            if (angles) { setJointAngles(angles); return true; }
+            return false;
+        }
+        
+        function setJointAngles(angles) {
+            joints[0].rotation.z = angles.j1;
+            joints[1].rotation.y = -angles.j2;
+            joints[2].rotation.y = angles.j3;
+        }
+
+        function getJointAngles() {
+            return { j1: joints[0].rotation.z, j2: -joints[1].rotation.y, j3: joints[2].rotation.y };
+        }
+        
+        function calculateAnglesFor(targetWorldPos) {
+            if (!targetWorldPos) return null;
+            const L2 = 40, l3Length = 29, tcpOffset = endEffectorDefs[currentEndEffectorType].tcpOffset, L3 = l3Length + tcpOffset, j2PivotZ = 30;
+            const theta1 = Math.atan2(targetWorldPos.y, targetWorldPos.x);
+            const r = Math.sqrt(targetWorldPos.x ** 2 + targetWorldPos.y ** 2), h = targetWorldPos.z - j2PivotZ, distSq = r ** 2 + h ** 2, dist = Math.sqrt(distSq);
+            if (dist > L2 + L3 + 1e-3 || dist < Math.abs(L2 - L3) - 1e-3) return null; // Add tolerance
+            const cos_val_theta3 = (distSq - L2 ** 2 - L3 ** 2) / (2 * L2 * L3);
+            if (Math.abs(cos_val_theta3) > 1) return null;
+            const theta3 = Math.acos(cos_val_theta3), alpha = Math.atan2(h, r);
+            const beta_cos_val = (L2 ** 2 + distSq - L3 ** 2) / (2 * L2 * dist);
+            if (Math.abs(beta_cos_val) > 1) return null;
+            const beta = Math.acos(beta_cos_val);
+            return { j1: theta1, j2: alpha + beta, j3: theta3 };
+        }
+
+        // ジョグボタン: 押した瞬間に1ステップ、長押しで連続移動
+        function setupJogHold() {
+            const jogControls = document.getElementById('jog-controls');
+            let holdDelay = null, holdRepeat = null;
+            const stopHold = () => {
+                clearTimeout(holdDelay); clearInterval(holdRepeat);
+                holdDelay = holdRepeat = null;
+            };
+            jogControls.addEventListener('pointerdown', (event) => {
+                const btn = event.target.closest('.jog-btn');
+                if (!btn || event.button !== 0) return;
+                event.preventDefault();
+                stopHold();
+                if (!handleJog(btn)) return;
+                holdDelay = setTimeout(() => {
+                    holdRepeat = setInterval(() => { if (!handleJog(btn)) stopHold(); }, 40);
+                }, 300);
+            });
+            jogControls.addEventListener('pointerout', (event) => { if (event.target.closest('.jog-btn')) stopHold(); });
+            ['pointerup', 'pointercancel', 'blur'].forEach(type => window.addEventListener(type, stopHold));
+            jogControls.addEventListener('contextmenu', (event) => { if (event.target.closest('.jog-btn')) event.preventDefault(); });
+        }
+
+        // 1ステップ分ジョグする。動けなかった場合は false を返す
+        function handleJog(btn) {
+            if (isAnimating) return false;
+            const type = btn.dataset.type, dir = parseInt(btn.dataset.dir);
+            if (type === 'joint') {
+                const jointIndex = parseInt(btn.dataset.joint);
+                if (jointIndex === 0) joints[0].rotation.z += jogStep.joint * dir;
+                else if (jointIndex === 1) joints[1].rotation.y -= jogStep.joint * dir;
+                else joints[2].rotation.y += jogStep.joint * dir;
+            } else if (type === 'cartesian') {
+                const axis = btn.dataset.axis;
+                const currentPos = new THREE.Vector3();
+                endEffector.getWorldPosition(currentPos);
+                const newTargetPos = currentPos.clone();
+                if (currentJogMode === 'base') {
+                    const delta = new THREE.Vector3(); delta[axis] = jogStep.cartesian * dir;
+                    newTargetPos.add(delta);
+                } else {
+                    const toolQuaternion = new THREE.Quaternion(), moveVector = new THREE.Vector3();
+                    endEffector.getWorldQuaternion(toolQuaternion);
+                    moveVector[axis] = 1;
+                    moveVector.applyQuaternion(toolQuaternion).multiplyScalar(jogStep.cartesian * dir);
+                    newTargetPos.add(moveVector);
+                }
+                if (!solveIK(newTargetPos)) {
+                    const errorMessage = document.getElementById('error-message');
+                    errorMessage.textContent = '可動範囲外です。';
+                    setTimeout(() => { if(errorMessage.textContent === '可動範囲外です。') errorMessage.textContent = ''; }, 1500);
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        function updateJogUI() {
+            const angles = getJointAngles();
+            document.getElementById('j1-angle-display').value = THREE.MathUtils.radToDeg(angles.j1).toFixed(1);
+            document.getElementById('j2-angle-display').value = THREE.MathUtils.radToDeg(angles.j2).toFixed(1);
+            document.getElementById('j3-angle-display').value = THREE.MathUtils.radToDeg(angles.j3).toFixed(1);
+            const position = new THREE.Vector3();
+            endEffector.getWorldPosition(position);
+            document.getElementById('x-pos-display').value = position.x.toFixed(1);
+            document.getElementById('y-pos-display').value = position.y.toFixed(1);
+            document.getElementById('z-pos-display').value = position.z.toFixed(1);
+        }
+
+        function setJogPanelEnabled(enabled) {
+            const panel = document.getElementById('jog-panel-container');
+            if (enabled) panel.classList.remove('disabled'); else panel.classList.add('disabled');
+        }
+        
+        function createJointVelocityChart() {
+            const ctx = document.getElementById('velocity-chart').getContext('2d');
+            velocityChart = new Chart(ctx, {
+                type: 'line', data: { labels: [], datasets: [
+                    { label: 'J1 (基部回転)', data: [], borderColor: '#ef4444', borderWidth: 1.5, pointRadius: 0 },
+                    { label: 'J2 (根本アーム)', data: [], borderColor: '#22c55e', borderWidth: 1.5, pointRadius: 0 },
+                    { label: 'J3 (先端アーム)', data: [], borderColor: '#3b82f6', borderWidth: 1.5, pointRadius: 0 }
+                ]},
+                options: { animation: false, scales: {
+                    x: { type: 'linear', title: { display: true, text: 'Time (s)', color: '#9ca3af' }, ticks: { color: '#9ca3af', maxRotation: 0, minRotation: 0 }, grid: { color: 'rgba(75, 85, 99, 0.5)' }},
+                    y: { title: { display: true, text: 'Angular Velocity (rad/s)', color: '#9ca3af' }, ticks: { color: '#9ca3af' }, grid: { color: 'rgba(75, 85, 99, 0.5)' }}
+                }, plugins: { legend: { labels: { color: '#f3f4f6' } } } }
+            });
+        }
+        
+        function updateJointVelocityPlot() {
+            if (!isAnimating) return;
+            const currentTime = performance.now();
+            const deltaTime = (currentTime - lastTime) / 1000.0;
+            if (deltaTime < 1e-5) return;
+            const currentAngles = getJointAngles();
+            const angularVelocities = {
+                j1: (currentAngles.j1 - lastAngles.j1) / deltaTime,
+                j2: (currentAngles.j2 - lastAngles.j2) / deltaTime,
+                j3: (currentAngles.j3 - lastAngles.j3) / deltaTime,
+            };
+            const chartTime = (currentTime - animationStartTime) / 1000.0;
+            velocityChart.data.labels.push(chartTime.toFixed(2));
+            velocityChart.data.datasets[0].data.push(angularVelocities.j1);
+            velocityChart.data.datasets[1].data.push(angularVelocities.j2);
+            velocityChart.data.datasets[2].data.push(angularVelocities.j3);
+            velocityChart.update('none');
+            lastAngles = { ...currentAngles };
+            lastTime = currentTime;
+        }
+        
+        function resetVelocityChart() {
+            if (velocityChart) {
+                velocityChart.data.labels = [];
+                velocityChart.data.datasets.forEach(d => { d.data = []; });
+                velocityChart.update();
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            TWEEN.update();
+            controls.update();
+            if (!isAnimating) updateJogUI();
+            updateJointVelocityPlot();
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }, false);
+
+        init();
+    </script>
+</body>
+
+</html>
